@@ -1,0 +1,69 @@
+version: "3" # this is the Docker Compose specification
+               # version, not the app stack version
+
+services:
+
+  seed:
+    build: .
+    environment:
+      MODE: development
+      BROKER_HOST: broker
+      BROKER_USER: test
+      BROKER_PASS: pass # DONT DO THIS IN PROD -- acceptable in dev,
+                        # but docker secrets should be used in prod
+                        # in conjunction with docker swarm in place
+                        # of docker compose
+      BROKER_PORT: 8672
+      DB_HOST: db
+      DB_USER: test
+      DB_PASS: pass
+      DB_NAME: dev
+    volumes:
+      - ./src:/src
+
+  broker:
+    image: rabbitmq:3-management-alpine
+    restart: always
+    hostname: broker
+    ports:
+      - 8672:8672   # changed from default of 5672 for dev use; this
+                    # prevents any possible conflicts for apps on same
+                    # host that are looking for 5672
+                    # This change requires modifying the config file at
+                    # /etc/rabbitmq/rabbitmq.conf in the container,
+                    # mounted as a bound volume in this compose file
+      - 18672:15672 # Expose access to the management console on
+                    # localhost:15672 change the number before the
+                    # colon to change what port to access it by
+                    # ex: 3333:15672 means access on localhost:3333
+    # Use environment variables & docker secrets in prod,
+    # this dev setup is harcoding the username & password in
+    # a config file & passing it to the container via volume
+    # because the image used doesn't support a RABBITMQ_NODE_PORT
+    # variable for changing the TCP port, but won't allow setting
+    # some of the configs in the rabbitmq.conf file & others with
+    # environment variables. For this reason, all configs are happening
+    # in config file in dev stack. This won't be necessary in prod as
+    # the default port will be used & USER & PASS will be set via
+    # environment using Secrets
+    # environment:
+    #   RABBITMQ_DEFAULT_USER: test
+    #   RABBITMQ_DEFAULT_PASS: pass # DONT DO THIS IN PROD -- acceptable in dev,
+    #                               # but docker secrets should be used in prod
+    #                               # in conjunction with docker swarm in place
+    #                               # of docker compose
+    volumes:
+      - ./rabbitmq-configs:/etc/rabbitmq
+
+  db:
+    image: postgres:13-alpine
+    restart: always
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_DB: dev
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: pass # DONT DO THIS IN PROD -- acceptable in dev,
+                              # but docker secrets should be used in prod
+                              # in conjunction with docker swarm in place
+                              # of docker compose

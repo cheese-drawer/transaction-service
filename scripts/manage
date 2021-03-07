@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+
+
+#
+# NAVIGATE TO CORRECT DIRECTORY
+#
+
+# start by going to script dir so all movements
+# from here are relative
+SCRIPT_DIR=`dirname $(realpath "$0")`
+cd $SCRIPT_DIR
+
+
+#
+# DEFER TO MANAGE SCRIPT
+#
+
+cd ..
+# enable app virtual environment
+eval "$(direnv export bash)"
+if [ !$PYTHONPATH ]; then
+    export PYTHONPATH=$PWD
+fi
+echo ""
+
+echo "Called with $@"
+
+python manage.py "$@"

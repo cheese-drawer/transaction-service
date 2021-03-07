@@ -1,0 +1,24 @@
+# vim files
+*.swp
+*.swo
+
+# python environment
+.env/
+.envrc
+
+# python caches
+__pycache__/
+.mypy_cache/
+
+# secret files
+.secrets
+TODO
+
+# testing coverage reports
+.coverage
+
+# dev helper scripts
+app/scripts
+integration_tests/scripts
+.vscode/
+migrations/

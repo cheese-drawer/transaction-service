@@ -1,0 +1,79 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ master, async ]
+  pull_request:
+    branches: [ master, async ]
+
+jobs:
+  typecheck:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.9
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements/dev.txt -r requirements/prod.txt
+    - name: Typecheck
+      run: ./scripts/typecheck
+
+  lint:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.9
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements/dev.txt -r requirements/prod.txt
+    - name: Lint
+      run: ./scripts/lint
+
+  unit_test:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.9
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements/dev.txt -r requirements/prod.txt
+    - name: Test
+      run: ./scripts/test unit
+
+  integration_test:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.9
+    - name: Install dependencies
+      run: |
+        pip install -r requirements/test_e2e.txt
+    - name: Test
+      run: |
+        docker-compose -f dev.docker-compose.yml up -d
+        ./scripts/manage sync noprompt
+        ./scripts/test e2e
+        docker-compose -f dev.docker-compose.yml down

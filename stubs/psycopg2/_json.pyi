@@ -1,0 +1,29 @@
+# pylint: disable=missing-module-docstring
+# pylint: disable=missing-class-docstring
+# pylint: disable=missing-function-docstring
+# pylint: disable=no-self-use
+# pylint: disable=unused-argument
+# pylint: disable=multiple-statements
+# pylint: disable=super-init-not-called
+
+# from psycopg2._psycopg import ISQLQuote as ISQLQuote, QuotedString as QuotedString, new_array_type as new_array_type, new_type as new_type, register_type as register_type
+# from psycopg2.compat import PY2 as PY2
+# from typing import Any, Optional
+
+# JSON_OID: int
+# JSONARRAY_OID: int
+# JSONB_OID: int
+# JSONBARRAY_OID: int
+
+class Json:
+    pass
+    # adapted: Any = ...
+    # def __init__(self, adapted: Any, dumps: Optional[Any] = ...) -> None: ...
+    # def __conform__(self, proto: Any): ...
+    # def dumps(self, obj: Any): ...
+    # def prepare(self, conn: Any) -> None: ...
+    # def getquoted(self): ...
+
+# def register_json(conn_or_curs: Optional[Any] = ..., globally: bool = ..., loads: Optional[Any] = ..., oid: Optional[Any] = ..., array_oid: Optional[Any] = ..., name: str = ...): ...
+# def register_default_json(conn_or_curs: Optional[Any] = ..., globally: bool = ..., loads: Optional[Any] = ...): ...
+# def register_default_jsonb(conn_or_curs: Optional[Any] = ..., globally: bool = ..., loads: Optional[Any] = ...): ...

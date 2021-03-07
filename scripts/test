@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+
+
+#
+# NAVIGATE TO CORRECT DIRECTORY
+#
+
+# start by going to script dir so all movements
+# from here are relative
+SCRIPT_DIR=`dirname $(realpath "$0")`
+cd $SCRIPT_DIR
+cd ..
+# enable app virtual environment
+eval "$(direnv export bash)"
+if [ !$PYTHONPATH ]; then
+    export PYTHONPATH=$PWD
+fi
+echo ""
+
+
+#
+# RUN TESTS
+#
+
+function unit {
+    echo ""
+    echo "Starting unit tests..."
+    echo ""
+
+    # run unit tests & save exit code
+    python -m unittest discover -s test/unit -b
+    # save exit code from tests
+    unit_result=$?
+
+    # return to scripts directory
+    cd $SCRIPT_DIR
+    echo ""
+}
+
+function e2e {
+    echo ""
+    echo "Starting integration tests..."
+    echo ""
+
+    # run integration tests & save exit code
+    python -m unittest discover -s test/integration -b
+    # save exit code from tests
+    e2e_result=$?
+
+    # return to scripts directory
+    cd $SCRIPT_DIR
+    echo ""
+}
+
+# Run unit tests or integration tests by specifying which
+# suite to run as an argument
+if [[ $1 == 'unit' ]]; then
+    unit
+    exit $unit_result
+elif [[ $1 == 'e2e' || $1 == 'integration' ]]; then
+    e2e
+    exit $e2e_result
+else
+    echo "Bad argument supplied."
+    exit 1
+fi
