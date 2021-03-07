@@ -3,7 +3,7 @@ version: "3" # this is the Docker Compose specification
 
 services:
 
-  seed:
+  app:
     build: .
     environment:
       MODE: development
