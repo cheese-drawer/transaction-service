@@ -22,13 +22,17 @@ echo ""
 # RUN TESTS
 #
 
+function run_tests {
+    python -m unittest discover -s $1 -b "${@:3}"
+}
+
 function unit {
     echo ""
     echo "Starting unit tests..."
     echo ""
 
     # run unit tests & save exit code
-    python -m unittest discover -s test/unit -b
+    run_tests test/unit "$@"
     # save exit code from tests
     unit_result=$?
 
@@ -43,7 +47,7 @@ function e2e {
     echo ""
 
     # run integration tests & save exit code
-    python -m unittest discover -s test/integration -b
+    run_tests test/integration "$@"
     # save exit code from tests
     e2e_result=$?
 
@@ -55,10 +59,10 @@ function e2e {
 # Run unit tests or integration tests by specifying which
 # suite to run as an argument
 if [[ $1 == 'unit' ]]; then
-    unit
+    unit "$@"
     exit $unit_result
 elif [[ $1 == 'e2e' || $1 == 'integration' ]]; then
-    e2e
+    e2e "$@"
     exit $e2e_result
 else
     echo "Bad argument supplied."
