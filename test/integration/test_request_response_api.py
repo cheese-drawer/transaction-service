@@ -175,6 +175,34 @@ class TestRouteTransactionGet(TestCase):
                 tran_id,
                 self.trim_msg_id(data[0]['_id']))
 
+    def test_count_and_offset_are_ignored_when_retrieving_one_by_id(
+        self
+    ) -> None:
+        tran_id = str(self.transaction_ids[0])
+        data = client.call(
+            'transaction.get',
+            {'id': tran_id,
+             'count': 10,
+             'offset': 10}
+        )['data']
+
+        with self.subTest():
+            self.assertEqual(len(data), 1)
+        with self.subTest():
+            self.assertEqual(
+                tran_id,
+                self.trim_msg_id(data[0]['_id']))
+
+    def test_an_error_is_returned_when_no_matching_id_is_found(self) -> None:
+        tran_id = str(uuid4())
+        response = client.call(
+            'transaction.get',
+            {'id': tran_id}
+        )
+
+        with self.subTest():
+            self.assertFalse(response['success'])
+
 
 if __name__ == '__main__':
     unittest.main()
