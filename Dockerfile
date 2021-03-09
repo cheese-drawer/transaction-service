@@ -44,4 +44,4 @@ RUN apk add --no-cache --virtual .build-deps \
 
 # start server
 ENTRYPOINT ["python"]
-CMD ["/src/server.py"]
+CMD ["-m", "src.server"]
