@@ -2,9 +2,9 @@ name: Code Quality
 
 on:
   push:
-    branches: [ master, async ]
+    branches: [ main ]
   pull_request:
-    branches: [ master, async ]
+    branches: [ main ]
 
 jobs:
   typecheck:
@@ -73,7 +73,7 @@ jobs:
         pip install -r requirements/test_e2e.txt
     - name: Test
       run: |
-        docker-compose -f dev.docker-compose.yml up -d
+        docker-compose  up -d
         ./scripts/manage sync noprompt
         ./scripts/test e2e
-        docker-compose -f dev.docker-compose.yml down
+        docker-compose  down
