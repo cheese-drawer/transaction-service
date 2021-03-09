@@ -1,7 +1,6 @@
 """An example implementation of custom object Model."""
 
 import datetime
-import json
 from typing import Union, Optional, List, TypedDict
 from uuid import UUID
 
@@ -63,7 +62,7 @@ register_adapter(dict, Json)
 
 
 class TransactionCreator(Create[TransactionData]):
-    """Add custom location parsing to Transaction.create"""
+    """Add custom location parsing to Transaction.create."""
 
     # pylint: disable=too-few-public-methods
 
@@ -105,7 +104,7 @@ class TransactionReader(Read[TransactionData]):
         count: Optional[int] = None,
         offset: Optional[int] = None,
     ) -> List[TransactionData]:
-        """Get all Transactions from the Database"""
+        """Get all Transactions from the Database."""
         if count is None:
             count = 50
         if offset is None:

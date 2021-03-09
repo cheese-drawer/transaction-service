@@ -1,4 +1,4 @@
-"""API configuration & definition for Transaction Service"""
+"""API configuration & definition for Transaction Service."""
 
 # standard library imports
 import logging
