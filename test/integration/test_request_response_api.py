@@ -1,10 +1,12 @@
 """Tests for endpoints on the Request & Response API."""
 # pylint: disable=missing-function-docstring
 
+from datetime import date
+import random
 import unittest
 from unittest import TestCase
-from uuid import uuid4
-from typing import Any, List, Dict
+from uuid import uuid4, UUID
+from typing import Any, List
 
 import psycopg2
 from psycopg2 import sql
@@ -14,9 +16,14 @@ from psycopg2.extras import Json
 from helpers.connection import connect, Connection
 from helpers.rpc_client import Client
 
+# tell psycopg2 to adapt all dictionaries to json instead of
+# the default hstore
+register_adapter(dict, Json)
 
 connection: Connection
 client: Client
+
+TABLE_NAME = 'transaction'
 
 
 def setUpModule() -> None:
@@ -43,195 +50,130 @@ def tearDownModule() -> None:
     connection.close()
 
 
-class TestRouteTest(TestCase):
-    """Tests for API endpoint `test`."""
-
-    def test_response_should_be_successful(self) -> None:
-        successful = client.call('test', 'message')['success']
-
-        self.assertTrue(successful)
-
-    def test_response_appends_that_took_forever_to_message(
-        self
-    ) -> None:
-        print('running test_response_appends_that_took_forever_to_message')
-        data = client.call('test', 'message')['data']
-
-        self.assertEqual(data, 'message that took forever')
+def rand_date() -> date:
+    return date.fromordinal(
+        date.today().toordinal() - random.randint(0, 100))
 
 
-class TestRouteWillError(TestCase):
-    """Tests for API endpoint `will-error`."""
-    response: Dict[str, Any]
+def build_row(tran_id: UUID) -> sql.Composed:
+    a_date = rand_date()
 
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.response = client.call('will-error', '')
-
-    def test_response_should_not_be_successful(self) -> None:
-        successful = self.response['success']
-
-        self.assertFalse(successful)
-
-    def test_response_should_include_error_information(self) -> None:
-        self.assertIn('error', self.response)
-
-    def test_error_data_includes_message(self) -> None:
-        message = client.call('will-error', 'message')['error']['message']
-
-        for phrase in ['Just an exception', 'message']:
-            # Using `self.subTest` as context allows for more elegance when
-            # making multiple assertions in the same test. Instead of stopping
-            # test execution if an assertion fails, it records the failure &
-            # continues to make the remaining assertions.
-            with self.subTest():
-                self.assertIn(phrase, message)
-
-    def test_error_data_includes_error_type(self) -> None:
-        errtype = self.response['error']['type']
-
-        self.assertEqual(errtype, 'Exception')
+    return sql.SQL(
+        "({tran_id},'1.00',FALSE,'a payee',{date_authorized},{date},"
+        "{acct_id},ARRAY [ 'Category' ], {location},'plaid_id')"
+    ).format(
+        tran_id=sql.Literal(str(tran_id)),
+        date_authorized=sql.Literal(a_date),
+        date=sql.Literal(a_date),
+        acct_id=sql.Literal(str(uuid4())),
+        location=sql.Literal({})
+    )
 
 
-class TestRouteDictionary(TestCase):
-    """Tests for API endpoint `dictionary`"""
-
-    def test_response_should_include_original_dicts_attributes(
-        self
-    ) -> None:
-        message = {
-            'dictionary': 'foo'
-        }
-        response = client.call('dictionary', message)
-
-        self.assertIn('dictionary', response['data'])
-
-    def test_response_should_include_new_bar_attribute_with_value_baz(
-        self
-    ) -> None:
-        message = {
-            'dictionary': 'foo'
-        }
-        response = client.call('dictionary', message)
-
-        self.assertEqual('baz', response['data']['bar'])
-
-
-class TestRouteDb(TestCase):
-    """Tests for API endpoint `db`"""
-
-    def test_response_should_be_list_of_table_names(self) -> None:
-        response = client.call('db')
-
-        with self.subTest():
-            self.assertIn('simple', response['data'])
-        with self.subTest():
-            self.assertIn('example_item', response['data'])
-
-    def test_response_unaltered_by_message_content(self) -> None:
-        response = client.call('db', 'this is ignored')
-
-        with self.subTest():
-            self.assertIn('simple', response['data'])
-        with self.subTest():
-            self.assertIn('example_item', response['data'])
-
-
-class TestRouteExampleItems(TestCase):
-    """Tests for API endpoint `db`"""
-    example_items: List[Any]
+class TestRouteTransactionGet(TestCase):
+    """Tests for API endpoint `transaction.get`"""
+    transaction_id: List[UUID]
 
     def setUp(self) -> None:
-        self.example_items: List[Any] = [{
-            '_id': uuid4(),
-            'string': 'match me',
-            'integer': 1,
-            'json': {},
-        }, {
-            '_id': uuid4(),
-            'string': 'match me',
-            'integer': 1,
-            'json': {},
-        }, {
-            '_id': uuid4(),
-            'string': "don't match me",
-            'integer': 1,
-            'json': {},
-        }]
+        self.transaction_ids = [uuid4() for _ in range(0, 100)]
 
-        def example_item_query(item: Any) -> psycopg2.sql.Composed:
-            base = sql.SQL(
-                'INSERT INTO example_item (_id, string, integer, json) '
-                'VALUES ({_id}, {string}, {integer}, {json});')
-            query = base.format(
-                _id=sql.Literal(str(item['_id'])),
-                string=sql.Literal(item['string']),
-                integer=sql.Literal(item['integer']),
-                json=sql.Literal(item['json']))
-
-            return query
-
-        # tell psycopg2 to adapt all dictionaries to json instead of
-        # the default hstore
-        register_adapter(dict, Json)
-
+        rows = sql.SQL(",").join([build_row(tran_id)
+                                  for tran_id in self.transaction_ids])
+        # inserts 1 row for each id into `transaction` table
+        query = sql.SQL(
+            "INSERT INTO {table} (_id,amount,pending,payee,date_authorized,"
+            "date,account_id,category,location,plaid_transaction_id) "
+            "VALUES {rows};"
+        ).format(
+            table=sql.Identifier(TABLE_NAME),
+            rows=rows,
+        )
         conn = psycopg2.connect('postgres://test:pass@localhost/dev')
 
-        # set db State to test against here
+        # set db state to test against here
         try:
             with conn:
                 with conn.cursor() as cur:
                     # start by making sure it is empty
-                    cur.execute('DELETE FROM example_item')
-                    # cur.execute('DELETE * FROM simple')
+                    cur.execute(f'DELETE FROM {TABLE_NAME}')
                     # then insert test records
-                    for item in self.example_items:
-                        cur.execute(example_item_query(item))
+                    cur.execute(query)
 
         finally:
             conn.close()
 
-    def test_response_should_be_include_all_records_with_matching_string_value(
-        self
-    ) -> None:
-        def trim_msg_id(msg_id: str) -> str:
-            """
-            Trim string representation of UUID from response to hex only.
+    @staticmethod
+    def trim_msg_id(msg_id: str) -> str:
+        """
+        Trim string representation of UUID from response to hex only.
 
-            Response has UUID as `UUID('bbcc5cc5-f893-411b-a5d8-aa765bfd0212')`
-            when they're needed as `'bbcc5cc5-f893-411b-a5d8-aa765bfd0212'`
-            for equality comparison.
-            """
+        Response has UUID as `UUID('bbcc5cc5-f893-411b-a5d8-aa765bfd0212')`
+        when they're needed as `'bbcc5cc5-f893-411b-a5d8-aa765bfd0212'`
+        for equality comparison.
+        """
 
-            split = msg_id.split("'")
-            return split[1]
+        split = msg_id.split("'")
+        return split[1]
 
-        def id_to_str(item: Any) -> str:
-            return str(item['_id'])
-
-        response = client.call('example-items', 'match me')
-        ids = [trim_msg_id(item['_id']) for item in response['data']]
+    def test_response_should_be_limited_to_50_records(self) -> None:
+        data = client.call('transaction.get')['data']
+        ids = [self.trim_msg_id(transaction['_id'])
+               for transaction in data]
 
         with self.subTest():
-            self.assertIn(id_to_str(self.example_items[0]), ids)
+            self.assertTrue(
+                set(ids).issubset([str(i) for i in self.transaction_ids]))
         with self.subTest():
-            self.assertIn(id_to_str(self.example_items[1]), ids)
-        with self.subTest():
-            self.assertNotIn(id_to_str(self.example_items[2]), ids)
+            self.assertEqual(len(data), 50)
 
-    def test_response_should_be_empty_if_no_matching_records_are_found(
+    def test_response_can_be_given_new_limit(self) -> None:
+        data = client.call('transaction.get', {'count': 10})['data']
+
+        with self.subTest():
+            self.assertEqual(len(data), 10)
+
+    def test_response_can_be_paginated_with_limit_and_offset(self) -> None:
+        first_ten = client.call('transaction.get', {'count': 10})['data']
+        next_ten = client.call(
+            'transaction.get', {
+                'count': 10, 'offset': 10})['data']
+        next_ten_ids = [self.trim_msg_id(tran['_id']) for tran in next_ten]
+
+        print(next_ten_ids)
+
+        for tran in first_ten:
+            with self.subTest():
+                self.assertNotIn(self.trim_msg_id(tran['_id']), next_ten_ids)
+        with self.subTest():
+            self.assertGreaterEqual(first_ten[-1]['date'], next_ten[0]['date'])
+
+    def test_the_results_are_sorted_in_reverse_chronological_order(
         self
     ) -> None:
-        response = client.call('example-items', 'match nothing')
+        data = client.call('transaction.get')['data']
 
-        self.assertEqual(len(response['data']), 0)
+        previous: Any
 
-    def test_response_should_be_error_if_no_query_string_is_given(
-        self
-    ) -> None:
-        response = client.call('example-items')
+        for index, tran in enumerate(data):
+            if index != 0:
+                with self.subTest():
+                    self.assertGreaterEqual(previous['date'], tran['date'])
+            else:
+                previous = tran
 
-        self.assertFalse(response['success'])
+    def test_a_single_transaction_can_be_retrieved_by_its_id(self) -> None:
+        tran_id = str(self.transaction_ids[0])
+        data = client.call(
+            'transaction.get',
+            {'id': tran_id}
+        )['data']
+
+        with self.subTest():
+            self.assertEqual(len(data), 1)
+        with self.subTest():
+            self.assertEqual(
+                tran_id,
+                self.trim_msg_id(data[0]['_id']))
 
 
 if __name__ == '__main__':

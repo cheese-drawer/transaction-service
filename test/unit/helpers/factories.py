@@ -32,7 +32,7 @@ class TransactionData:
             pending=False,
             payee="A payee",
             date_authorized=date.today(),
-            date_posted=date.today(),
+            date=date.today(),
             spent_from_id=None,
             account_id=uuid4(),
             category=[],
