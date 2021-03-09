@@ -35,7 +35,7 @@ fi
 # loop is pushed to the background to allow for stack logs
 # to be pulled to the foreground in the next command
 while sleep 1; do
-    rg --files ./src | entr -d docker-compose restart seed
+    rg --files ./src | entr -d docker-compose restart app
 done &
 # save while loop's PID to be able to kill it later
 WATCHER_PID=$!
