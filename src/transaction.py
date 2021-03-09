@@ -3,7 +3,7 @@ from copy import deepcopy
 from typing import Optional
 from uuid import UUID
 
-from src.models import TransactionData
+from .models import TransactionData
 
 
 class Transaction:

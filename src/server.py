@@ -10,10 +10,10 @@ import amqp_worker as worker
 import db_wrapper as db
 
 # internal dependencies
-from start_server import Runner
+from .start_server import Runner
 
 # application logic
-from models import Transaction, TransactionData
+from .models import Transaction, TransactionData
 # import transaction
 
 #
