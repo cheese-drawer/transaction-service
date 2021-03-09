@@ -107,6 +107,8 @@ class TransactionReader(Read[TransactionData]):
         """Get all Transactions from the Database."""
         if count is None:
             count = 50
+        if count > 50:
+            raise ValueError('Parameter `count` can not be greater than 50.')
         if offset is None:
             offset = 0
 

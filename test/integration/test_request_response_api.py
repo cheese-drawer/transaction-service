@@ -132,6 +132,16 @@ class TestRouteTransactionGet(TestCase):
         with self.subTest():
             self.assertEqual(len(data), 10)
 
+    def test_limit_cant_be_greater_than_50(self) -> None:
+        response = client.call('transaction.get', {'count': 51})
+
+        with self.subTest():
+            self.assertFalse(response['success'])
+        with self.subTest():
+            self.assertIn(
+                'can not be greater than 50',
+                response['error']['message'])
+
     def test_response_can_be_paginated_with_limit_and_offset(self) -> None:
         first_ten = client.call('transaction.get', {'count': 10})['data']
         next_ten = client.call(
