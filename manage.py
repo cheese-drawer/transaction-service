@@ -32,6 +32,11 @@ DB_PASS = os.getenv('DB_PASS', 'pass')
 DB_HOST = os.getenv('DB_HOST', 'localhost')
 DB_NAME = os.getenv('DB_NAME', 'dev')
 
+print(f'user: {DB_USER}')
+print(f'pass: {DB_PASS}')
+print(f'host: {DB_HOST}')
+print(f'name: {DB_NAME}')
+
 DB_URL = f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}'
 
 
