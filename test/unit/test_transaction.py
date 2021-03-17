@@ -1,12 +1,11 @@
 """Tests for src/lib.py"""
 # pylint: disable=missing-function-docstring
 
-
 import unittest
 from unittest import TestCase
 from uuid import uuid4, UUID
 
-from helpers import factories
+from test.unit.helpers import factories
 
 from src.transaction import Transaction
 

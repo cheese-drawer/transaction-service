@@ -5,7 +5,7 @@ from copy import deepcopy
 from typing import Optional
 from uuid import UUID
 
-from .models import TransactionData
+from .models.transaction import TransactionData
 
 
 class Transaction:
