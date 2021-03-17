@@ -1,2 +1,2 @@
-https://github.com/cheese-drawer/lib-python-amqp-worker/releases/download/0.1.1/amqp_worker-0.1.1.tar.gz
-https://github.com/cheese-drawer/lib-python-db-wrapper/releases/download/0.1.2/db_wrapper-0.1.2.tar.gz
+https://github.com/cheese-drawer/lib-python-amqp-worker/releases/download/0.2.0/amqp_worker-0.2.0-py3-none-any.whl
+https://github.com/cheese-drawer/lib-python-db-wrapper/releases/download/2.0.1/db_wrapper-2.0.1-py3-none-any.whl

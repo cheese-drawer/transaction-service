@@ -1,23 +1,34 @@
 """An example implementation of custom object Model."""
 
 import datetime
-from typing import Union, Optional, List, TypedDict
+from typing import (
+    Any,
+    Union,
+    Optional,
+    List,
+    Dict,
+)
 from uuid import UUID
 
+# pydantic is a C module & pylint can't parse it without loading
+# it into the Python interpreter using --extension-pkg-whitelist
+# or just ignore it anyways since MyPy's able to parse it instead
+# and validates that BaseModel exists
+from pydantic import BaseModel  # pylint: disable=no-name-in-module
 from psycopg2 import sql
 from psycopg2.extensions import register_adapter
 from psycopg2.extras import Json
 
 from db_wrapper.model import (
+    Client,
     ModelData,
     Model,
-    Read,
     Create,
-    Client
+    Read,
 )
 
 
-class Location(TypedDict):
+class Location(BaseModel):
     """Geolocation data for a Transaction."""
 
     # PENDS python 3.9 support in pylint,
@@ -71,7 +82,7 @@ class TransactionCreator(Create[TransactionData]):
         columns: List[sql.Identifier] = []
         values: List[Union[sql.Literal, sql.Composed]] = []
 
-        for column, value in item.items():
+        for column, value in item.dict().items():
             # if column == 'location':
             #     values.append(sql.Literal(json.dumps(value)))
             # else:
@@ -99,7 +110,7 @@ class TransactionCreator(Create[TransactionData]):
 class TransactionReader(Read[TransactionData]):
     """Add custom method to Model.read."""
 
-    async def all(
+    async def many(
         self,
         count: Optional[int] = None,
         offset: Optional[int] = None,
@@ -122,10 +133,10 @@ class TransactionReader(Read[TransactionData]):
             count=sql.Literal(count),
             offset=sql.Literal(offset))
 
-        result: List[TransactionData] = \
+        results: List[Dict[str, Any]] = \
             await self._client.execute_and_return(query)
 
-        return result
+        return [TransactionData(**result) for result in results]
 
 
 class Transaction(Model[TransactionData]):
