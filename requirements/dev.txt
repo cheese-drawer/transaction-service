@@ -6,4 +6,4 @@ pycodestyle>=2.6.0
 pydocstyle>=5.1.1
 pylint>=2.6.0
 sqlalchemy>=1.3.23,<1.4.0
-sqlbag==1579049654
+sqlbag==0.1.1579049654
