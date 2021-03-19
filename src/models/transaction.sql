@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS "transaction" (
-    "_id" uuid PRIMARY KEY,
+    "id" uuid PRIMARY KEY,
     "amount" numeric(11, 2) NOT NULL,
     "pending" boolean NOT NULL,
     "payee" varchar(255) NOT NULL,

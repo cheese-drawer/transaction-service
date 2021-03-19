@@ -19,6 +19,11 @@ from amqp_worker.connection import ConnectionParameters, Channel
 from amqp_worker.serializer import ResponseEncoder, JSONEncoderTypes
 from amqp_worker.rpc_worker import RPCWorker, JSONGzipRPC
 import db_wrapper as db
+# pylint thinks BaseModel doesn't exist in pydantic
+# ignoring it since MyPy's able to parse it
+# and validates that BaseModel exists
+from pydantic import (  # pylint: disable=no-name-in-module
+    BaseModel, ValidationError)
 
 # internal dependencies
 from .start_server import Runner
@@ -65,20 +70,6 @@ logging.basicConfig(
 
 
 #
-# DATABASE SETUP
-#
-
-db_connection_params = db.ConnectionParameters(
-    host=os.getenv('DB_HOST', 'localhost'),
-    user=os.getenv('DB_USER', 'postgres'),
-    password=os.getenv('DB_PASS', 'postgres'),
-    database=os.getenv('DB_NAME', 'postgres'))
-
-# init db & connect
-database = db.Client(db_connection_params)
-
-
-#
 # WORKER SETUP
 #
 
@@ -118,6 +109,10 @@ class ExtendedJSONEncoder(ResponseEncoder):
 
         # first parse for extended types:
 
+        if isinstance(o, BaseModel):
+            LOGGER.debug('o is instance of BaseModel')
+            return o.dict()
+
         if isinstance(o, date):
             LOGGER.debug('o is instance of date')
             return o.isoformat()
@@ -151,7 +146,8 @@ async def json_gzip_rpc_factory(
 
     return pattern
 
-# get connection parameters from env, or use defaults
+
+# get connection parameters from dotenv, or use defaults
 broker_connection_params = ConnectionParameters(
     host=os.getenv('BROKER_HOST', 'localhost'),
     port=int(os.getenv('BROKER_PORT', '5672')),
@@ -168,7 +164,21 @@ response_and_request = RPCWorker(
 
 
 #
-# MODELS
+# DATABASE SETUP
+#
+
+db_connection_params = db.ConnectionParameters(
+    host=os.getenv('DB_HOST', 'localhost'),
+    user=os.getenv('DB_USER', 'postgres'),
+    password=os.getenv('DB_PASS', 'postgres'),
+    database=os.getenv('DB_NAME', 'postgres'))
+
+# init db & connect
+database = db.Client(db_connection_params)
+
+
+#
+# DATABASE MODELS
 #
 
 transaction_model = Transaction(database)
@@ -178,20 +188,71 @@ transaction_model = Transaction(database)
 # WORKER ROUTES
 #
 
+# Defining expected props as a BaseModel leverages pydantic's runtime type
+# validation on data received by route
+class TransactionGetProps(BaseModel):
+    """Interface for `data` argument on `transaction.get` route."""
+
+    # BaseModel is essentially a dataclass, no public methods needed
+    # pylint: disable=too-few-public-methods
+
+    id: Optional[UUID]
+    count: Optional[int]
+    offset: Optional[int]
+
+
 @response_and_request.route('transaction.get')
 async def get(data: Optional[Dict[str, Any]]) -> List[TransactionData]:
     """Get list of Transactions."""
-    LOGGER.info(f'data: {data}')
+    LOGGER.info(f'Request received on `transaction.get` with data: {data}')
 
-    if data is None:
-        return await transaction_model.read.all()
+    if data is not None:
+        # validate received data by initializing as Props Model
+        try:
+            props = TransactionGetProps(**data)
+        except ValidationError as err:
+            raise Exception('Required key missing on JSON Request.') from err
 
-    if data.get('id') is not None:
-        return [await transaction_model.read.one_by_id(data['id'])]
+        # when a Transaction ID is given, ignore all other data & get that one
+        # specific Transaction from the database
+        if props.id is not None:
+            return [await transaction_model.read.one_by_id(str(props.id))]
 
-    return await transaction_model.read.all(
-        count=data.get('count'),
-        offset=data.get('offset'))
+        # otherwise return a list of transactions, passing any value to count &
+        # offset to optionally customize pagination
+        return await transaction_model.read.many(
+            count=props.count,
+            offset=props.offset)
+
+    # props don't have to be given; defaults to getting the first page of
+    # Transactions when no data is received
+    return await transaction_model.read.many()
+
+
+class TransactionUpdateProps(BaseModel):
+    """Interface for `data` argument on `transaction.update` route."""
+
+    # BaseModel is essentially a dataclass, no public methods needed
+    # pylint: disable=too-few-public-methods
+
+    transaction_id: UUID
+    changes: Dict[str, Any]
+
+
+@response_and_request.route('transaction.update')
+async def update(data: Dict[str, Any]) -> List[TransactionData]:
+    """Update given Transaction."""
+    LOGGER.info(f'Request received on `transaction.update` with data: {data}')
+
+    # validate received data by initializing as Props Model
+    try:
+        props = TransactionUpdateProps(**data)
+    except ValidationError as err:
+        raise Exception('Required key missing on JSON Request.') from err
+
+    return [await transaction_model.update.one_by_id(
+        str(props.transaction_id),
+        props.changes)]
 
 #
 # RUN SERVICE

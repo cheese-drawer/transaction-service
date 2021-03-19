@@ -56,6 +56,21 @@ function e2e {
     echo ""
 }
 
+function one {
+    echo ""
+    echo "Testing $1..."
+    echo ""
+
+    # run integration tests & save exit code
+    python -m unittest $1 -b "${@:2}"
+    # save exit code from tests
+    one_result=$?
+
+    # return to scripts directory
+    cd $SCRIPT_DIR
+    echo ""
+}
+
 # Run unit tests or integration tests by specifying which
 # suite to run as an argument
 if [[ $1 == 'unit' ]]; then
@@ -64,6 +79,9 @@ if [[ $1 == 'unit' ]]; then
 elif [[ $1 == 'e2e' || $1 == 'integration' ]]; then
     e2e "$@"
     exit $e2e_result
+elif [[ $1 == 'one' || $1 == 'file' ]]; then
+    one "${@:2}"
+    exit $one_result
 else
     echo "Bad argument supplied."
     exit 1

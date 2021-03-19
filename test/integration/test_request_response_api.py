@@ -4,17 +4,19 @@
 from datetime import date
 import random
 import unittest
-from unittest import TestCase
 from uuid import uuid1, UUID
-from typing import Any, List
+from typing import List
 
 import psycopg2
 from psycopg2 import sql
 from psycopg2.extensions import register_adapter
 from psycopg2.extras import Json
 
-from helpers.connection import connect, Connection
-from helpers.rpc_client import Client
+# pylint thinks `test. ...` is a standard import for some reason
+# pylint: disable=wrong-import-order
+from test.integration.helpers.connection import connect, Connection
+from test.integration.helpers.rpc_client import Client
+from test.integration.helpers.timeout import TimeLimitedTestCase
 
 # tell psycopg2 to adapt all dictionaries to json instead of
 # the default hstore
@@ -50,13 +52,13 @@ def tearDownModule() -> None:
     connection.close()
 
 
-def rand_date() -> date:
+def _rand_date() -> date:
     return date.fromordinal(
         date.today().toordinal() - random.randint(0, 100))
 
 
-def build_row(tran_id: UUID) -> sql.Composed:
-    a_date = rand_date()
+def _build_row(tran_id: UUID) -> sql.Composed:
+    a_date = _rand_date()
 
     return sql.SQL(
         "({tran_id},'1.00',FALSE,'a payee',{date_authorized},{date},"
@@ -70,41 +72,60 @@ def build_row(tran_id: UUID) -> sql.Composed:
     )
 
 
-class TestRouteTransactionGet(TestCase):
+def _populate(transaction_ids: List[UUID]) -> None:
+    rows = sql.SQL(",").join([_build_row(tran_id)
+                              for tran_id in transaction_ids])
+    # inserts 1 row for each id into `transaction` table
+    query = sql.SQL(
+        "INSERT INTO {table} (id,amount,pending,payee,date_authorized,"
+        "date,account_id,category,location,plaid_transaction_id) "
+        "VALUES {rows};"
+    ).format(
+        table=sql.Identifier(TABLE_NAME),
+        rows=rows,
+    )
+    conn = psycopg2.connect('postgres://test:pass@localhost/dev')
+
+    # set db state to test against here
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                # start by making sure it is empty
+                cur.execute(f'DELETE FROM {TABLE_NAME}')
+                # then insert test records
+                cur.execute(query)
+
+    finally:
+        conn.close()
+
+
+def _trim_msg_id(msg_id: str) -> str:
+    """
+    Trim string representation of UUID from response to hex only.
+
+    Response has UUID as `UUID('bbcc5cc5-f893-411b-a5d8-aa765bfd0212')`
+    when they're needed as `'bbcc5cc5-f893-411b-a5d8-aa765bfd0212'`
+    for equality comparison.
+    """
+
+    print(f'msg_id: {msg_id}')
+    split = msg_id.split("'")
+    return split[1]
+
+
+class TestRouteTransactionGet(TimeLimitedTestCase):
     """Tests for API endpoint `transaction.get`"""
     transaction_id: List[UUID]
 
     def setUp(self) -> None:
+        super().setUp()
+
         self.transaction_ids = [uuid1() for _ in range(0, 100)]
-
-        rows = sql.SQL(",").join([build_row(tran_id)
-                                  for tran_id in self.transaction_ids])
-        # inserts 1 row for each id into `transaction` table
-        query = sql.SQL(
-            "INSERT INTO {table} (_id,amount,pending,payee,date_authorized,"
-            "date,account_id,category,location,plaid_transaction_id) "
-            "VALUES {rows};"
-        ).format(
-            table=sql.Identifier(TABLE_NAME),
-            rows=rows,
-        )
-        conn = psycopg2.connect('postgres://test:pass@localhost/dev')
-
-        # set db state to test against here
-        try:
-            with conn:
-                with conn.cursor() as cur:
-                    # start by making sure it is empty
-                    cur.execute(f'DELETE FROM {TABLE_NAME}')
-                    # then insert test records
-                    cur.execute(query)
-
-        finally:
-            conn.close()
+        _populate(self.transaction_ids)
 
     def test_response_should_be_limited_to_50_records(self) -> None:
         data = client.call('transaction.get')['data']
-        ids = [transaction['_id']
+        ids = [transaction['id']
                for transaction in data]
 
         with self.subTest():
@@ -134,13 +155,12 @@ class TestRouteTransactionGet(TestCase):
         next_ten = client.call(
             'transaction.get', {
                 'count': 10, 'offset': 10})['data']
-        next_ten_ids = [tran['_id'] for tran in next_ten]
-
-        print(next_ten_ids)
+        print(f'next_ten: {next_ten}')
+        next_ten_ids = [tran['id'] for tran in next_ten]
 
         for tran in first_ten:
             with self.subTest():
-                self.assertNotIn(tran['_id'], next_ten_ids)
+                self.assertNotIn(tran['id'], next_ten_ids)
         with self.subTest():
             self.assertGreaterEqual(first_ten[-1]['date'], next_ten[0]['date'])
 
@@ -149,14 +169,24 @@ class TestRouteTransactionGet(TestCase):
     ) -> None:
         data = client.call('transaction.get')['data']
 
-        previous: Any
+        previous: date
+        current: date
 
-        for index, tran in enumerate(data):
+        for index, transaction in enumerate(data):
+            current = date.fromisoformat(transaction['date'])
+
             if index != 0:
+                # print(f'{index})')
+                # print(
+                #     f'previous ({previous}) >= current ({current}): '
+                #     f'{previous >= current}')
+                # print(
+                #     f'previous {type(previous)}, current {type(current)}')
+
                 with self.subTest():
-                    self.assertGreaterEqual(previous['date'], tran['date'])
-            else:
-                previous = tran
+                    self.assertGreaterEqual(previous, current)
+
+            previous = current
 
     def test_a_single_transaction_can_be_retrieved_by_its_id(self) -> None:
         tran_id = str(self.transaction_ids[0])
@@ -170,7 +200,7 @@ class TestRouteTransactionGet(TestCase):
         with self.subTest():
             self.assertEqual(
                 tran_id,
-                data[0]['_id'])
+                data[0]['id'])
 
     def test_count_and_offset_are_ignored_when_retrieving_one_by_id(
         self
@@ -188,7 +218,7 @@ class TestRouteTransactionGet(TestCase):
         with self.subTest():
             self.assertEqual(
                 tran_id,
-                data[0]['_id'])
+                data[0]['id'])
 
     def test_an_error_is_returned_when_no_matching_id_is_found(self) -> None:
         tran_id = str(uuid1())
@@ -199,6 +229,54 @@ class TestRouteTransactionGet(TestCase):
 
         with self.subTest():
             self.assertFalse(response['success'])
+
+
+class TestRouteTransactionUpdate(TimeLimitedTestCase):
+    """Tests for API endpoint `transaction.update`"""
+    transaction_id: List[UUID]
+
+    def setUp(self) -> None:
+        super().setUp()
+
+        self.transaction_ids = [uuid1() for _ in range(0, 2)]
+        _populate(self.transaction_ids)
+
+    def test_updates_one_or_more_given_fields_on_transaction_with_given_id(
+        self
+    ) -> None:
+        tran_id = str(self.transaction_ids[0])
+        new_spent_from_id = uuid1()
+        data = client.call(
+            'transaction.update',
+            {'transaction_id': tran_id,
+             'changes': {
+                 'spent_from_id': str(new_spent_from_id)
+             }}
+        )['data']
+
+        self.assertEqual(
+            data[0]['spent_from_id'],
+            str(new_spent_from_id))
+
+    def test_changes_passed_to_update_persist_in_database(self) -> None:
+        tran_id = str(self.transaction_ids[0])
+        new_spent_from_id = uuid1()
+        client.call(
+            'transaction.update',
+            {'transaction_id': tran_id,
+             'changes': {
+                 'spent_from_id': str(new_spent_from_id)
+             }}
+        )
+
+        from_db = client.call(
+            'transaction.get',
+            {'id': tran_id}
+        )['data']
+
+        self.assertEqual(
+            from_db[0]['spent_from_id'],
+            str(new_spent_from_id))
 
 
 if __name__ == '__main__':
