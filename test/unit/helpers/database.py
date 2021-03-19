@@ -11,23 +11,22 @@ def composed_to_string(seq: sql.Composed) -> str:
     """Test helper to convert a sql query to a string for comparison.
 
     Works for queries built with postgres.sql.Composable objects.
-    From https://github.com/psycopg/psycopg2/issues/747#issuecomment-662857306
     """
 
-    def compose_array(q: sql.Composed) -> List[str]:
+    def compose_array(query: sql.Composed) -> List[str]:
         # print(f'composing {q}')
         strings: List[str] = []
 
-        for p in q.seq:
-            # print(f'working on adding {p}')
+        for part in query.seq:
+            # print(f'working on adding {part}')
             # print(f'to {strings}')
-            if isinstance(p, sql.Composed):
-                strings = strings + compose_array(p)
+            if isinstance(part, sql.Composed):
+                strings = strings + compose_array(part)
             else:
                 try:
-                    strings.append(p.string)  # type: ignore
+                    strings.append(part.string)  # type: ignore
                 except AttributeError:
-                    strings.append(str(p.wrapped))  # type: ignore
+                    strings.append(str(part.wrapped))  # type: ignore
 
         return strings
 
