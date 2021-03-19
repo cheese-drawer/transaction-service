@@ -5,7 +5,7 @@ from datetime import date
 import random
 import unittest
 from unittest import TestCase
-from uuid import uuid4, UUID
+from uuid import uuid1, UUID
 from typing import Any, List
 
 import psycopg2
@@ -65,7 +65,7 @@ def build_row(tran_id: UUID) -> sql.Composed:
         tran_id=sql.Literal(str(tran_id)),
         date_authorized=sql.Literal(a_date),
         date=sql.Literal(a_date),
-        acct_id=sql.Literal(str(uuid4())),
+        acct_id=sql.Literal(str(uuid1())),
         location=sql.Literal({})
     )
 
@@ -75,7 +75,7 @@ class TestRouteTransactionGet(TestCase):
     transaction_id: List[UUID]
 
     def setUp(self) -> None:
-        self.transaction_ids = [uuid4() for _ in range(0, 100)]
+        self.transaction_ids = [uuid1() for _ in range(0, 100)]
 
         rows = sql.SQL(",").join([build_row(tran_id)
                                   for tran_id in self.transaction_ids])
@@ -191,7 +191,7 @@ class TestRouteTransactionGet(TestCase):
                 data[0]['_id'])
 
     def test_an_error_is_returned_when_no_matching_id_is_found(self) -> None:
-        tran_id = str(uuid4())
+        tran_id = str(uuid1())
         response = client.call(
             'transaction.get',
             {'id': tran_id}
