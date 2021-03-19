@@ -102,22 +102,9 @@ class TestRouteTransactionGet(TestCase):
         finally:
             conn.close()
 
-    @staticmethod
-    def trim_msg_id(msg_id: str) -> str:
-        """
-        Trim string representation of UUID from response to hex only.
-
-        Response has UUID as `UUID('bbcc5cc5-f893-411b-a5d8-aa765bfd0212')`
-        when they're needed as `'bbcc5cc5-f893-411b-a5d8-aa765bfd0212'`
-        for equality comparison.
-        """
-
-        split = msg_id.split("'")
-        return split[1]
-
     def test_response_should_be_limited_to_50_records(self) -> None:
         data = client.call('transaction.get')['data']
-        ids = [self.trim_msg_id(transaction['_id'])
+        ids = [transaction['_id']
                for transaction in data]
 
         with self.subTest():
@@ -147,13 +134,13 @@ class TestRouteTransactionGet(TestCase):
         next_ten = client.call(
             'transaction.get', {
                 'count': 10, 'offset': 10})['data']
-        next_ten_ids = [self.trim_msg_id(tran['_id']) for tran in next_ten]
+        next_ten_ids = [tran['_id'] for tran in next_ten]
 
         print(next_ten_ids)
 
         for tran in first_ten:
             with self.subTest():
-                self.assertNotIn(self.trim_msg_id(tran['_id']), next_ten_ids)
+                self.assertNotIn(tran['_id'], next_ten_ids)
         with self.subTest():
             self.assertGreaterEqual(first_ten[-1]['date'], next_ten[0]['date'])
 
@@ -183,7 +170,7 @@ class TestRouteTransactionGet(TestCase):
         with self.subTest():
             self.assertEqual(
                 tran_id,
-                self.trim_msg_id(data[0]['_id']))
+                data[0]['_id'])
 
     def test_count_and_offset_are_ignored_when_retrieving_one_by_id(
         self
@@ -201,7 +188,7 @@ class TestRouteTransactionGet(TestCase):
         with self.subTest():
             self.assertEqual(
                 tran_id,
-                self.trim_msg_id(data[0]['_id']))
+                data[0]['_id'])
 
     def test_an_error_is_returned_when_no_matching_id_is_found(self) -> None:
         tran_id = str(uuid4())
