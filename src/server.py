@@ -160,6 +160,7 @@ broker_connection_params = ConnectionParameters(
 response_and_request = RPCWorker(
     broker_connection_params,
     pattern_factory=json_gzip_rpc_factory)
+# service_to_service = worker.QueueWorker(broker_connection_params)
 
 
 #

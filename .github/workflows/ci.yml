@@ -71,6 +71,7 @@ jobs:
     - name: Install dependencies
       run: |
         pip install -r requirements/test_e2e.txt
+        pip freeze
     - name: Test
       run: |
         docker-compose  up -d
