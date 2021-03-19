@@ -1,9 +1,11 @@
+"""Application logic for manipulating Transactions."""
+
 from __future__ import annotations
 from copy import deepcopy
 from typing import Optional
 from uuid import UUID
 
-from src.models import TransactionData
+from .models import TransactionData
 
 
 class Transaction:
@@ -27,4 +29,5 @@ class Transaction:
 
     @property
     def spent_from_id(self) -> Optional[UUID]:
+        """Return spent_from_id data field."""
         return self._data['spent_from_id']

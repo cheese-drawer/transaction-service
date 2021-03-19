@@ -6,8 +6,6 @@
 # directory (containing python env & tests)
 current_dir=`dirname "$0"`
 cd $current_dir
-# Only use the following line if needing to enable
-# a python environment
-# eval "$(direnv export bash)"
+cd ..
 
-docker-compose --file ../dev.docker-compose.yml build
+docker-compose build

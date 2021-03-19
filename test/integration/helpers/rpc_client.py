@@ -50,7 +50,12 @@ class Client:
     def _on_response(self, _: Any, __: Any, props: Any, body: bytes) -> None:
         if self.correlation_id == props.correlation_id:
             self.response = json.loads(gzip.decompress(body).decode('UTF8'))
-            print(f'Response received {self.response}')
+            if self.response['success']:
+                print(f'Response received {self.response}')
+            elif self.response['success'] == False:
+                print('Error received:')
+                for line in self.response['error']['trace'].split('\n'):
+                    print(line)
 
     # PENDS python 3.9 support in pylint
     # pylint: disable=unsubscriptable-object
