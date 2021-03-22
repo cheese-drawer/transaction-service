@@ -99,20 +99,6 @@ def _populate(transaction_ids: List[UUID]) -> None:
         conn.close()
 
 
-def _trim_msg_id(msg_id: str) -> str:
-    """
-    Trim string representation of UUID from response to hex only.
-
-    Response has UUID as `UUID('bbcc5cc5-f893-411b-a5d8-aa765bfd0212')`
-    when they're needed as `'bbcc5cc5-f893-411b-a5d8-aa765bfd0212'`
-    for equality comparison.
-    """
-
-    print(f'msg_id: {msg_id}')
-    split = msg_id.split("'")
-    return split[1]
-
-
 class TestRouteTransactionGet(TimeLimitedTestCase):
     """Tests for API endpoint `transaction.get`"""
     transaction_id: List[UUID]
