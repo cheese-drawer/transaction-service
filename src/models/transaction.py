@@ -1,6 +1,7 @@
 """An example implementation of custom object Model."""
 
 import datetime
+import json
 from typing import (
     Any,
     Union,
@@ -16,7 +17,6 @@ from uuid import UUID
 # and validates that BaseModel exists
 from pydantic import BaseModel  # pylint: disable=no-name-in-module
 from psycopg2 import sql
-from psycopg2.extensions import register_adapter
 from psycopg2.extras import Json
 
 from db_wrapper.model import (
@@ -67,44 +67,73 @@ class TransactionData(ModelData):
     plaid_transaction_id: str  # id from Plaid
 
 
-# tell psycopg2 to adapt all dictionaries to json instead of
-# the default hstore
-register_adapter(dict, Json)
-
-
 class TransactionCreator(Create[TransactionData]):
     """Add custom location parsing to Transaction.create."""
 
     # pylint: disable=too-few-public-methods
 
-    async def one(self, item: TransactionData) -> TransactionData:
-        """Override default Model.create.one method."""
-        columns: List[sql.Identifier] = []
+    @staticmethod
+    def _build_row(item: TransactionData) -> sql.Composed:
         values: List[Union[sql.Literal, sql.Composed]] = []
 
         for column, value in item.dict().items():
-            # if column == 'location':
-            #     values.append(sql.Literal(json.dumps(value)))
-            # else:
-            #     values.append(sql.Literal(value))
-            values.append(sql.Literal(value))
+            if column == 'location':
+                values.append(sql.Literal(json.dumps(value)))
+            else:
+                values.append(sql.Literal(value))
 
+        values_composed = sql.SQL(',').join(values)
+
+        return sql.SQL('({row})').format(row=values_composed)
+
+    async def one(self, item: TransactionData) -> TransactionData:
+        """Override default Model.create.one method."""
+        columns: List[sql.Identifier] = []
+        row = self._build_row(item)
+
+        for column in item.dict().keys():
             columns.append(sql.Identifier(column))
 
         query = sql.SQL(
             'INSERT INTO {table} ({columns}) '
-            'VALUES ({values}) '
+            'VALUES {row} '
             'RETURNING *;'
         ).format(
             table=self._table,
             columns=sql.SQL(',').join(columns),
-            values=sql.SQL(',').join(values),
+            row=row,
         )
 
         result: List[TransactionData] = \
             await self._client.execute_and_return(query)
 
         return result[0]
+
+    async def many(
+        self,
+        records: List[TransactionData]
+    ) -> List[TransactionData]:
+        """Insert many Transactions into the table simultaneously."""
+        columns: List[sql.Identifier] = []
+        rows = [self._build_row(record) for record in records]
+
+        for column in records[0].dict().keys():
+            columns.append(sql.Identifier(column))
+
+        query = sql.SQL(
+            'INSERT INTO {table} ({columns}) '
+            'VALUES {row} '
+            'RETURNING *;'
+        ).format(
+            table=self._table,
+            columns=sql.SQL(',').join(columns),
+            row=sql.SQL(',').join(rows),
+        )
+
+        result: List[TransactionData] = \
+            await self._client.execute_and_return(query)
+
+        return result
 
 
 class TransactionReader(Read[TransactionData]):
