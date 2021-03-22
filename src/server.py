@@ -276,6 +276,9 @@ async def update(data: Dict[str, Any]) -> List[TransactionData]:
 class TransactionNewProps(BaseModel):
     """Interface for `data` argument on `transaction.s2s.new` route."""
 
+    # BaseModel is essentially a dataclass, no public methods needed
+    # pylint: disable=too-few-public-methods
+
     transactions: List[TransactionData]
 
 
