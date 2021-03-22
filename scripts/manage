@@ -10,17 +10,29 @@
 SCRIPT_DIR=`dirname $(realpath "$0")`
 cd $SCRIPT_DIR
 
-
-#
-# DEFER TO MANAGE SCRIPT
-#
-
 cd ..
 # enable app virtual environment
 eval "$(direnv export bash)"
 if [ !$PYTHONPATH ]; then
     export PYTHONPATH=$PWD
 fi
+
+
+#
+# SET ENVIRONMENT VARS
+#
+
+# These values are only used in development
+export DB_USER='test'
+export DB_PASS='pass'
+export DB_HOST='localhost'
+export DB_NAME='dev'
+
+
+#
+# DEFER TO MANAGE SCRIPT
+#
+
 echo ""
 
 echo "Called with $@"
