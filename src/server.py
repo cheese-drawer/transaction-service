@@ -273,18 +273,24 @@ async def update(data: Dict[str, Any]) -> List[TransactionData]:
         props.changes)]
 
 
+class TransactionNewProps(BaseModel):
+    """Interface for `data` argument on `transaction.s2s.new` route."""
+
+    transactions: List[TransactionData]
+
+
 @service_to_service.route('transaction.s2s.new')
-async def new(data: List[Dict[str, Any]]) -> None:
+async def new(data: Dict[str, Any]) -> None:
     """Add given transactions to the database."""
     LOGGER.info(f'Request received on `transaction.s2s.new` with data: {data}')
 
     # validate received data as TransactionData
     try:
-        transactions = [TransactionData(**datum) for datum in data]
+        props = TransactionNewProps(**data)
     except ValidationError as err:
-        raise Exception('Given data isn\'t a Transaction.') from err
+        raise Exception('Given data is invalid.') from err
 
-    await transaction_model.create.many(transactions)
+    await transaction_model.create.many(props.transactions)
 
 #
 # RUN SERVICE

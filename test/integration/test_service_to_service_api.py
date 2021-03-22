@@ -130,9 +130,12 @@ class TestRouteTransactionNew(TimeLimitedTestCase):
     def test_sending_transaction_adds_to_db(self) -> None:
         """Sending a transaction as json adds it to the database."""
         new_id = uuid1()
+        message = {
+            'transactions': [Transaction.create_with_id(new_id)],
+        }
         client.publish(
             'transaction.s2s.new',
-            [Transaction.create_with_id(new_id)])
+            message)
 
         # because publish happens asynchronously, attempting to read the db
         # directly after publishing the new transaction data may occur before
@@ -148,21 +151,27 @@ class TestRouteTransactionNew(TimeLimitedTestCase):
 
         db_result = _execute_and_return(query)
 
-        self.assertEqual(UUID(db_result[0]['id']), new_id)
+        with self.subTest():
+            self.assertEqual(len(db_result), 1)
+        with self.subTest():
+            self.assertEqual(UUID(db_result[0]['id']), new_id)
 
     def test_can_add_many_transactions(self) -> None:
         """Sending many transactions adds all of them to the database."""
-        # tran_ids = [uuid1() for _ in range(0, 10000)]
-        tran_ids = [uuid1() for _ in range(0, 100)]
+        num_records = 100
+        tran_ids = [uuid1() for _ in range(0, num_records)]
+        message = {
+            'transactions': [
+                Transaction.create_with_id(new_id) for new_id in tran_ids],
+        }
         client.publish(
             'transaction.s2s.new',
-            [Transaction.create_with_id(new_id) for new_id in tran_ids])
+            message)
 
         # the length of time to wait must increase with the size of the
         # payload, as the worker needs extra time to transmit it (just barely)
         # and the database needs extra time to save the records (the bigger
         # problem)
-        # time.sleep(10)
         time.sleep(0.1)
 
         query = sql.SQL(
@@ -175,12 +184,15 @@ class TestRouteTransactionNew(TimeLimitedTestCase):
         db_result = _execute_and_return(query)
         result_ids = [row['id'] for row in db_result]
 
-        self.assertSetEqual(set(result_ids), {str(id) for id in tran_ids})
+        with self.subTest():
+            self.assertEqual(len(db_result), num_records)
+        with self.subTest():
+            self.assertSetEqual(set(result_ids), {str(id) for id in tran_ids})
 
     def test_invalid_data_does_nothing(self) -> None:
         """Sending data unable to be validated as Transaction does nothing."""
-        client.publish('transaction.s2s.new', [1, 2, 3])
-
+        message = {'transactions': [1, 2, 3]}
+        client.publish('transaction.s2s.new', message)
         query = sql.SQL(
             'SELECT *'
             'FROM {table}'
@@ -191,6 +203,40 @@ class TestRouteTransactionNew(TimeLimitedTestCase):
         db_result = _execute_and_return(query)
 
         self.assertEqual(len(db_result), 0)
+
+    def test_skips_duplicate_ids(self) -> None:
+        """Skips adding a transaction if it already exists in the database."""
+        new_id = uuid1()
+        tran1 = Transaction.create_with_id(new_id)
+        tran1['payee'] = 'Original transaction'
+        message1 = {'transactions': [tran1]}
+        client.publish('transaction.s2s.new', message1)
+        # try adding another one with the same id
+        tran2 = Transaction.create_with_id(new_id)
+        tran2['payee'] = 'Duplicate transaction'
+        message2 = {'transactions': [tran2]}
+        client.publish('transaction.s2s.new', message2)
+
+        # because publish happens asynchronously, attempting to read the db
+        # directly after publishing the new transaction data may occur before
+        # the service has a chance to save the new record.
+        time.sleep(0.1)
+
+        query = sql.SQL(
+            'SELECT * FROM {table}'
+            'WHERE id = {id}'
+        ).format(
+            table=sql.Identifier(TABLE_NAME),
+            id=sql.Literal(str(new_id)))
+
+        db_result = _execute_and_return(query)
+
+        with self.subTest():
+            self.assertEqual(len(db_result), 1)
+        with self.subTest():
+            self.assertEqual(UUID(db_result[0]['id']), new_id)
+        with self.subTest():
+            self.assertEqual(db_result[0]['payee'], 'Original transaction')
 
 
 if __name__ == '__main__':
