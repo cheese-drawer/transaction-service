@@ -17,7 +17,6 @@ from uuid import UUID
 # and validates that BaseModel exists
 from pydantic import BaseModel  # pylint: disable=no-name-in-module
 from psycopg2 import sql
-from psycopg2.extras import Json
 
 from db_wrapper.model import (
     Client,
