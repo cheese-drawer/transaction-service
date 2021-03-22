@@ -18,6 +18,7 @@ from uuid import UUID
 from amqp_worker.connection import ConnectionParameters, Channel
 from amqp_worker.serializer import ResponseEncoder, JSONEncoderTypes
 from amqp_worker.rpc_worker import RPCWorker, JSONGzipRPC
+from amqp_worker.queue_worker import QueueWorker, JSONGzipMaster
 import db_wrapper as db
 # pylint thinks BaseModel doesn't exist in pydantic
 # ignoring it since MyPy's able to parse it
@@ -30,7 +31,6 @@ from .start_server import Runner
 
 # application logic
 from .models import Transaction, TransactionData
-# import transaction
 
 #
 # ENVIRONMENT
@@ -133,14 +133,30 @@ async def json_gzip_rpc_factory(
     channel: Channel
 ) -> JSONGzipRPC:
     """
-    Build a Pattern using JSONEncoder Extension.
+    Build a RPC Pattern using JSONEncoder Extension.
 
-    Intended to be passed to an AMQP Worker on initialization to replace
+    Intended to be passed to a RPCWorker on initialization to replace
     default Pattern with default JSONEncoder.
     """
     pattern = cast(
         JSONGzipRPC,
         await JSONGzipRPC.create(channel))
+    # replace default encoder with extended JSON encoder
+    pattern.json_encoder = ExtendedJSONEncoder()
+
+    return pattern
+
+
+def json_gzip_queue_factory(
+    channel: Channel
+) -> JSONGzipMaster:
+    """
+    Build a Master Pattern using JSONEncoder Extension.
+
+    Intended to be passed to a QueueWorker on initialization to replace
+    default Pattern with default JSONEncoder.
+    """
+    pattern = JSONGzipMaster(channel)
     # replace default encoder with extended JSON encoder
     pattern.json_encoder = ExtendedJSONEncoder()
 
@@ -160,7 +176,9 @@ broker_connection_params = ConnectionParameters(
 response_and_request = RPCWorker(
     broker_connection_params,
     pattern_factory=json_gzip_rpc_factory)
-# service_to_service = worker.QueueWorker(broker_connection_params)
+service_to_service = QueueWorker(
+    broker_connection_params,
+    pattern_factory=json_gzip_queue_factory)
 
 
 #
@@ -254,6 +272,20 @@ async def update(data: Dict[str, Any]) -> List[TransactionData]:
         str(props.transaction_id),
         props.changes)]
 
+
+@service_to_service.route('transaction.s2s.new')
+async def new(data: List[Dict[str, Any]]) -> None:
+    """Add given transactions to the database."""
+    LOGGER.info(f'Request received on `transaction.s2s.new` with data: {data}')
+
+    # validate received data as TransactionData
+    try:
+        transactions = [TransactionData(**datum) for datum in data]
+    except ValidationError as err:
+        raise Exception('Given data isn\'t a Transaction.') from err
+
+    await transaction_model.create.many(transactions)
+
 #
 # RUN SERVICE
 #
@@ -262,6 +294,6 @@ runner = Runner()
 
 runner.register_database(database)
 runner.register_worker(response_and_request)
-# runner.register_worker(service_to_service)
+runner.register_worker(service_to_service)
 
 runner.run()
