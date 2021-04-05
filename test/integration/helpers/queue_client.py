@@ -5,7 +5,8 @@ a Queue for a Worker on an AMPQ broker.
 
 import gzip
 import json
-from typing import Any
+from typing import Any, Callable, Dict
+import signal
 
 import pika
 from pika.adapters.blocking_connection import BlockingChannel
@@ -14,9 +15,10 @@ Connection = pika.BlockingConnection
 Channel = BlockingChannel
 
 
-# pylint: disable=too-few-public-methods
-class Client:
-    """Set up Queue Producer."""
+class QueueBase:
+    """Set up Queue Producer or Consumer."""
+
+    # pylint: disable=too-few-public-methods
 
     channel: Channel
 
@@ -25,6 +27,12 @@ class Client:
         channel: Channel
     ):
         self.channel = channel
+
+
+class Producer(QueueBase):
+    """Set up Queue Producer."""
+
+    # pylint: disable=too-few-public-methods
 
     def publish(
         self,
@@ -44,3 +52,30 @@ class Client:
                 delivery_mode=2,  # make message persistent
             )
         )
+
+
+Handler = Callable[[Dict[str, Any]], None]
+
+
+class Consumer(QueueBase):
+    """Set up Queue Consumer."""
+
+    # pylint: disable=too-few-public-methods
+
+    def get(
+        self,
+        target_queue: str,
+    ) -> Any:
+        """Get, decompress, decode, & de-serialize single message, if exist."""
+        self.channel.queue_declare(queue=target_queue, durable=True)
+        method, _, body = self.channel.basic_get(queue=target_queue)
+
+        if method is not None:
+            message = json.loads(
+                gzip.decompress(body).decode('UTF8'))  # type: ignore
+            self.channel.basic_ack(
+                delivery_tag=method.delivery_tag)  # type: ignore
+
+            return message
+
+        return None

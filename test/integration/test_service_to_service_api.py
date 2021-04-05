@@ -6,7 +6,7 @@
 import unittest
 from uuid import uuid1, UUID
 import time
-from typing import Any, Optional, Dict
+from typing import Any, Optional, List, Dict
 
 import psycopg2
 from psycopg2 import sql
@@ -15,8 +15,8 @@ from psycopg2.extras import Json, RealDictCursor  # type: ignore
 
 # pylint thinks `test. ...` is a standard import for some reason
 # pylint: disable=wrong-import-order
-from test.integration.helpers.connection import connect, Connection
-from test.integration.helpers.queue_client import Client
+from test.integration.helpers.connection import connect, Connection, Channel
+from test.integration.helpers.queue_client import Producer, Consumer
 from test.integration.helpers.timeout import TimeLimitedTestCase
 
 # tell psycopg2 to adapt all dictionaries to json instead of
@@ -25,18 +25,20 @@ register_adapter(dict, Json)
 
 
 connection: Connection
-client: Client
+channel: Channel
+producer: Producer
 
 DSN = 'postgres://test:pass@localhost/dev'
 TABLE_NAME = 'transaction'
 
 
 def setUpModule() -> None:
-    """Establish connection & create AMQP client."""
+    """Establish connection & create AMQP producer."""
     # pylint: disable=global-statement
     # pylint: disable=invalid-name
     global connection
-    global client
+    global channel
+    global producer
 
     connection, channel = connect(
         host='localhost',
@@ -44,7 +46,7 @@ def setUpModule() -> None:
         user='test',
         password='pass'
     )
-    client = Client(channel)
+    producer = Producer(channel)
 
     # clear database table
     _clear_table()
@@ -133,7 +135,7 @@ class TestRouteTransactionNew(TimeLimitedTestCase):
         message = {
             'transactions': [Transaction.create_with_id(new_id)],
         }
-        client.publish(
+        producer.publish(
             'transaction.s2s.new',
             message)
 
@@ -164,7 +166,7 @@ class TestRouteTransactionNew(TimeLimitedTestCase):
             'transactions': [
                 Transaction.create_with_id(new_id) for new_id in tran_ids],
         }
-        client.publish(
+        producer.publish(
             'transaction.s2s.new',
             message)
 
@@ -189,10 +191,10 @@ class TestRouteTransactionNew(TimeLimitedTestCase):
         with self.subTest():
             self.assertSetEqual(set(result_ids), {str(id) for id in tran_ids})
 
-    def test_invalid_data_does_nothing(self) -> None:
-        """Sending data unable to be validated as Transaction does nothing."""
+    def test_invalid_data_does_not_change_database(self) -> None:
+        """Sending data unable to be validated as Transaction adds nothing."""
         message = {'transactions': [1, 2, 3]}
-        client.publish('transaction.s2s.new', message)
+        producer.publish('transaction.s2s.new', message)
         query = sql.SQL(
             'SELECT *'
             'FROM {table}'
@@ -204,18 +206,40 @@ class TestRouteTransactionNew(TimeLimitedTestCase):
 
         self.assertEqual(len(db_result), 0)
 
+    def test_invalid_data_logs_error(self) -> None:
+        """Sending data unable to be validated as Transaction logs error."""
+        # send a message that should result in an error for the service
+        message = {'transactions': [1, 2, 3]}
+        producer.publish('transaction.s2s.new', message)
+
+        # check the logging queue for an error message
+        log_queue = 'logger.error'
+        logs: List[Any] = []
+        last_message: Optional[Any] = None
+
+        consumer = Consumer(channel)
+        last_message = consumer.get(log_queue)
+
+        while last_message is not None:
+            logs.append(last_message)
+            last_message = consumer.get(log_queue)
+
+        print(logs)
+
+        self.assertGreater(len(logs), 0)
+
     def test_skips_duplicate_ids(self) -> None:
         """Skips adding a transaction if it already exists in the database."""
         new_id = uuid1()
         tran1 = Transaction.create_with_id(new_id)
         tran1['payee'] = 'Original transaction'
         message1 = {'transactions': [tran1]}
-        client.publish('transaction.s2s.new', message1)
+        producer.publish('transaction.s2s.new', message1)
         # try adding another one with the same id
         tran2 = Transaction.create_with_id(new_id)
         tran2['payee'] = 'Duplicate transaction'
         message2 = {'transactions': [tran2]}
-        client.publish('transaction.s2s.new', message2)
+        producer.publish('transaction.s2s.new', message2)
 
         # because publish happens asynchronously, attempting to read the db
         # directly after publishing the new transaction data may occur before

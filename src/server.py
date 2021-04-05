@@ -27,6 +27,8 @@ from pydantic import (  # pylint: disable=no-name-in-module
     BaseModel, ValidationError)
 
 # internal dependencies
+from .logger import setup_logger_service
+from .mode import get_mode
 from .start_server import Runner
 
 # application logic
@@ -36,24 +38,6 @@ from .models import Transaction, TransactionData
 # ENVIRONMENT
 #
 
-
-def get_mode() -> str:
-    """Determine if running application in 'production' or 'development'.
-
-    Uses `MODE` environment variable & falls back to 'development' if no
-    variable exists. Requires mode to be set to either 'development' OR
-    'production', raises an error if anything else is specified.
-    """
-    env = os.getenv('MODE', 'development')  # default to 'development'
-
-    if env in ('development', 'production'):
-        return env
-
-    raise TypeError(
-        'MODE must be either `production`, `development`, or unset '
-        '(defaults to `development`)')
-
-
 MODE = get_mode()
 
 
@@ -61,12 +45,7 @@ MODE = get_mode()
 # LOGGING
 #
 
-LOGGER = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO
-    if MODE == 'development'
-    else logging.ERROR,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 
 #
@@ -103,26 +82,26 @@ class ExtendedJSONEncoder(ResponseEncoder):
         Adds support for pydantic.BaseModel, datetime.date, uuid.UUID, &
         decimal.Decimal.
         """
-        LOGGER.debug('Using custom serializer...')
-        LOGGER.debug(f'o: {o}')
-        LOGGER.debug(f'type: {type(o)}')
+        logger.debug('Using custom serializer...')
+        logger.debug(f'o: {o}')
+        logger.debug(f'type: {type(o)}')
 
         # first parse for extended types:
 
         if isinstance(o, BaseModel):
-            LOGGER.debug('o is instance of BaseModel')
+            logger.debug('o is instance of BaseModel')
             return o.dict()
 
         if isinstance(o, date):
-            LOGGER.debug('o is instance of date')
+            logger.debug('o is instance of date')
             return o.isoformat()
 
         if isinstance(o, UUID):
-            LOGGER.debug('o is instance of UUID')
+            logger.debug('o is instance of UUID')
             return str(o)
 
         if isinstance(o, Decimal):
-            LOGGER.debug('o is instance of UUID')
+            logger.debug('o is instance of UUID')
             return float(o)
 
         # then, fall back to ResponseEncoder.default method
@@ -175,11 +154,15 @@ broker_connection_params = ConnectionParameters(
 # variable
 response_and_request = RPCWorker(
     broker_connection_params,
-    pattern_factory=json_gzip_rpc_factory)
+    pattern_factory=json_gzip_rpc_factory,
+    json_encoder=ExtendedJSONEncoder())
 service_to_service = QueueWorker(
     broker_connection_params,
-    pattern_factory=json_gzip_queue_factory)
-
+    pattern_factory=json_gzip_queue_factory,
+    json_encoder=ExtendedJSONEncoder())
+log_producer = setup_logger_service(
+    broker_connection_params,
+    json_gzip_queue_factory)
 
 #
 # DATABASE SETUP
@@ -222,7 +205,7 @@ class TransactionGetProps(BaseModel):
 @response_and_request.route('transaction.get')
 async def get(data: Optional[Dict[str, Any]]) -> List[TransactionData]:
     """Get list of Transactions."""
-    LOGGER.info(f'Request received on `transaction.get` with data: {data}')
+    logger.info(f'Request received on `transaction.get` with data: {data}')
 
     if data is not None:
         # validate received data by initializing as Props Model
@@ -260,7 +243,7 @@ class TransactionUpdateProps(BaseModel):
 @response_and_request.route('transaction.update')
 async def update(data: Dict[str, Any]) -> List[TransactionData]:
     """Update given Transaction."""
-    LOGGER.info(f'Request received on `transaction.update` with data: {data}')
+    logger.info(f'Request received on `transaction.update` with data: {data}')
 
     # validate received data by initializing as Props Model
     try:
@@ -285,7 +268,7 @@ class TransactionNewProps(BaseModel):
 @service_to_service.route('transaction.s2s.new')
 async def new(data: Dict[str, Any]) -> None:
     """Add given transactions to the database."""
-    LOGGER.info(f'Request received on `transaction.s2s.new` with data: {data}')
+    logger.info(f'Request received on `transaction.s2s.new` with data: {data}')
 
     # validate received data as TransactionData
     try:
@@ -304,5 +287,6 @@ runner = Runner()
 runner.register_database(database)
 runner.register_worker(response_and_request)
 runner.register_worker(service_to_service)
+runner.register_worker(log_producer)
 
 runner.run()
